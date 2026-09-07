@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Area Code Atlas — Permanent Time Zone Globe</title>
+  <meta name="description" content="Interactive sample globe with permanent time-zone colors." />
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #a8bdd6;
+      --panel: #07152d;
+      --line: #284c78;
+      --ocean: #0a3655;
+      --page: #020617;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--page); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
+    button, input { font: inherit; }
+
+    .app-header {
+      display: grid;
+      grid-template-columns: 238px minmax(650px, 1fr) 320px;
+      gap: 16px;
+      min-height: 245px;
+      padding: 18px 12px 16px;
+      border-bottom: 1px solid #1e293b;
+      align-items: start;
+    }
+
+    h1 { margin: 0 0 8px; font-size: 1rem; line-height: 1.15; font-weight: 900; }
+    .search { display: flex; gap: 8px; }
+    .search input { width: 118px; height: 42px; padding: 0 12px; border: 1px solid #94a3b8; border-radius: 6px; background: #e2e8f0; color: #0f172a; }
+    .search button { height: 40px; padding: 0 14px; border: 0; border-radius: 6px; background: #2563eb; color: white; font-weight: 800; cursor: pointer; }
+
+    .zone-wrap { min-width: 0; overflow: hidden; }
+    .zone-grid { display: grid; grid-template-columns: repeat(8, minmax(104px, 1fr)); gap: 6px; }
+    .zone-card {
+      min-height: 72px;
+      padding: 7px 6px;
+      border: 1px solid #ffffff38;
+      border-radius: 6px;
+      color: white;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px #ffffff10;
+      transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+    }
+    .zone-card:hover, .zone-card.active { transform: translateY(-2px); filter: brightness(1.12); box-shadow: 0 0 0 2px #fff, 0 0 20px #ffffff55; }
+    .zone-card strong, .zone-card span { display: block; text-shadow: 0 1px 2px #0009; }
+    .zone-card strong { font-size: .92rem; }
+    .zone-card span { margin-top: 3px; font-size: .86rem; font-weight: 700; }
+    .resize-copy { margin: -1px 0 0; border-top: 1px solid #64748b; color: #cbd5e1; text-align: center; font-size: .66rem; font-weight: 800; }
+
+    .info { min-height: 210px; padding: 8px 10px; border: 1px solid #2f5f95; border-radius: 8px; background: var(--panel); box-shadow: 0 0 22px #3b82f633; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; margin: -2px -4px 7px; border-bottom: 1px solid #2f5f95; }
+    .tabs span { padding: 7px 4px; text-align: center; font-size: .8rem; }
+    .tabs .active { border-radius: 5px; background: #2b62bf; }
+    .info h2 { margin: 6px 0; text-align: center; font-size: 1.05rem; }
+    .info-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; min-height: 27px; align-items: center; border-bottom: 1px solid #153152; font-size: .92rem; }
+    .info-row:last-child { border-bottom: 0; }
+    .info-row span { color: #dbeafe; }
+    .info-row strong { max-width: 180px; text-align: right; }
+
+    .map-shell { position: relative; height: calc(100vh - 245px); min-height: 620px; margin-top: 18px; border: 1px solid #1e3a5f; border-radius: 12px 12px 0 0; overflow: hidden; background: radial-gradient(circle at 50% 45%, #0c476d 0, var(--ocean) 48%, #071e33 100%); box-shadow: 0 12px 34px #0009; }
+    #globe { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    #globe:active { cursor: grabbing; }
+    .map-status { position: absolute; left: 18px; top: 18px; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid #79d7ff55; border-radius: 999px; background: #06152ddd; color: #dff7ff; font-size: .8rem; font-weight: 800; backdrop-filter: blur(10px); }
+    .map-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+    .hint { position: absolute; left: 18px; bottom: 18px; padding: 7px 10px; border-radius: 6px; background: #020617bf; color: #dbeafe; font-size: .78rem; }
+    .controls { position: absolute; right: 12px; top: 12px; display: grid; overflow: hidden; border-radius: 9px; box-shadow: 0 4px 16px #0008; }
+    .controls button { width: 38px; height: 38px; border: 0; border-bottom: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 1.35rem; font-weight: 800; cursor: pointer; }
+    .controls button:last-child { border-bottom: 0; font-size: 1rem; }
+    .controls button:hover { background: #dbeafe; }
+
+    @media (max-width: 1200px) {
+      .app-header { grid-template-columns: 210px 1fr; min-height: auto; }
+      .info { grid-column: 1 / -1; min-height: 0; }
+      .zone-grid { grid-template-columns: repeat(4, minmax(104px, 1fr)); }
+      .map-shell { height: 680px; }
+    }
+
+    @media (max-width: 760px) {
+      .app-header { grid-template-columns: 1fr; padding: 14px; }
+      .zone-grid { grid-template-columns: repeat(2, 1fr); }
+      .map-shell { height: 560px; min-height: 560px; margin-top: 12px; }
+      .hint { max-width: calc(100% - 36px); }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <section>
+      <h1>Area Code Lookup<br />Country Calling Code<br />Time Zone Locator</h1>
+      <form class="search" id="searchForm">
+        <input id="countrySearch" type="search" placeholder="Type Here" aria-label="Find a country" />
+        <button type="submit">Search</button>
+      </form>
+    </section>
+
+    <section class="zone-wrap" aria-label="Time zone colors">
+      <div class="zone-grid" id="zoneGrid"></div>
+      <p class="resize-copy">Permanent time-zone colors on the globe</p>
+    </section>
+
+    <aside class="info">
+      <div class="tabs"><span class="active">Area Information</span><span>Time Zone Converter</span></div>
+      <h2>Area Information</h2>
+      <div class="info-row"><span>Country</span><strong id="countryName">Hover over globe</strong></div>
+      <div class="info-row"><span>Time Zone</span><strong id="zoneName">---</strong></div>
+      <div class="info-row"><span>UTC offset</span><strong id="zoneOffset">---</strong></div>
+      <div class="info-row"><span>Color layer</span><strong>Always visible</strong></div>
+    </aside>
+  </header>
+
+  <main class="map-shell">
+    <svg id="globe" role="img" aria-label="Rotatable globe permanently colored by time zone"></svg>
+    <div class="map-status">Permanent color layer</div>
+    <div class="hint">Drag to rotate · Scroll to zoom · Select a time-zone box to focus</div>
+    <div class="controls" aria-label="Map controls">
+      <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+      <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+      <button type="button" id="reset" aria-label="Reset globe">⌂</button>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script>
+    const zones = [
+      { name: "HAWAII", offset: -10, color: "#b6c4d7", gradient: ["#e2e8f0", "#94a3b8"] },
+      { name: "ALASKA", offset: -8, color: "#d946ef", gradient: ["#f0abfc", "#c026d3"] },
+      { name: "MARQUESAS", offset: -9.5, color: "#6d28d9", gradient: ["#7c3aed", "#4c1d95"] },
+      { name: "PACIFIC", offset: -7, color: "#dc3b3b", gradient: ["#f87171", "#b91c1c"] },
+      { name: "MOUNTAIN", offset: -6, color: "#d88912", gradient: ["#fbbf24", "#b45309"] },
+      { name: "CENTRAL", offset: -5, color: "#22a855", gradient: ["#4ade80", "#15803d"] },
+      { name: "EASTERN", offset: -4, color: "#3479de", gradient: ["#60a5fa", "#1d4ed8"] },
+      { name: "ATLANTIC", offset: -3, color: "#d65b15", gradient: ["#f97316", "#9a3412"] }
+    ];
+
+    const palette = [
+      "#64748b", "#d946ef", "#7c3aed", "#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#f97316",
+      "#ea580c", "#d97706", "#ca8a04", "#65a30d", "#16a34a", "#059669", "#0d9488", "#2563eb",
+      "#0284c7", "#14b8a6", "#4338ca", "#6d28d9", "#be185d", "#dc2626", "#b45309", "#4d7c0f",
+      "#047857", "#0369a1", "#475569"
+    ];
+
+    const zoneGrid = document.getElementById("zoneGrid");
+    const timeFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    zones.forEach((zone) => {
+      const card = document.createElement("button");
+      card.className = "zone-card";
+      card.style.background = `linear-gradient(135deg, ${zone.gradient[0]}, ${zone.gradient[1]})`;
+      const hours = Math.trunc(Math.abs(zone.offset));
+      const minutes = Math.round((Math.abs(zone.offset) - hours) * 60);
+      const offsetLabel = `UTC${zone.offset >= 0 ? "+" : "-"}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+      card.innerHTML = `<strong>${zone.name}</strong><span class="clock">--:--:--</span><span>${offsetLabel}</span>`;
+      card.addEventListener("click", () => focusOffset(zone.offset, card));
+      zoneGrid.appendChild(card);
+    });
+
+    function updateClocks() {
+      document.querySelectorAll(".zone-card").forEach((card, index) => {
+        const now = new Date(Date.now() + zones[index].offset * 3600000);
+        card.querySelector(".clock").textContent = timeFormatter.format(now);
+      });
+    }
+    updateClocks();
+    setInterval(updateClocks, 1000);
+
+    const svg = d3.select("#globe");
+    let width = 1200;
+    let height = 700;
+    let scale = 295;
+    let rotation = [28, -10, 0];
+    let countries = null;
+    let states = null;
+    let hoveredId = null;
+    let autoRotate = true;
+
+    const projection = d3.geoOrthographic().clipAngle(90).precision(.3);
+    const path = d3.geoPath(projection);
+    const sphere = { type: "Sphere" };
+    const graticule = d3.geoGraticule10();
+    const defs = svg.append("defs");
+    const glow = defs.append("filter").attr("id", "glow");
+    glow.append("feGaussianBlur").attr("stdDeviation", 8).attr("result", "blur");
+    const merge = glow.append("feMerge");
+    merge.append("feMergeNode").attr("in", "blur");
+    merge.append("feMergeNode").attr("in", "SourceGraphic");
+    const globeGroup = svg.append("g");
+    globeGroup.append("path").attr("class", "ocean").attr("fill", "#0b4265").attr("stroke", "#9ee8ff").attr("stroke-width", 1.4).attr("filter", "url(#glow)");
+    globeGroup.append("path").attr("class", "grid").attr("fill", "none").attr("stroke", "#bfeaff").attr("stroke-opacity", .12).attr("stroke-width", .7);
+    const countryGroup = globeGroup.append("g").attr("class", "countries");
+    const stateGroup = globeGroup.append("g").attr("class", "states").attr("pointer-events", "none");
+
+    function resize() {
+      const bounds = document.querySelector(".map-shell").getBoundingClientRect();
+      width = bounds.width;
+      height = bounds.height;
+      scale = Math.min(width * .31, height * .46, scale || Infinity);
+      projection.translate([width / 2, height / 2]).scale(scale).rotate(rotation);
+      svg.attr("viewBox", `0 0 ${width} ${height}`);
+      render();
+    }
+
+    function render() {
+      projection.rotate(rotation).scale(scale);
+      globeGroup.select(".ocean").attr("d", path(sphere));
+      globeGroup.select(".grid").attr("d", path(graticule));
+      countryGroup.selectAll("path").attr("d", path);
+      stateGroup.selectAll("path").attr("d", path);
+    }
+
+    function focusOffset(offset, card) {
+      autoRotate = false;
+      document.querySelectorAll(".zone-card").forEach(el => el.classList.toggle("active", el === card));
+      rotation = [-offset * 15, -8, 0];
+      render();
+      document.getElementById("zoneName").textContent = card.querySelector("strong").textContent;
+      document.getElementById("zoneOffset").textContent = `UTC${offset >= 0 ? "+" : ""}${offset}`;
+      document.getElementById("countryName").textContent = "Selected time zone";
+    }
+
+    function offsetForLongitude(longitude) {
+      return Math.max(-12, Math.min(14, Math.round(longitude / 15)));
+    }
+
+    function colorForLongitude(longitude) {
+      const offset = offsetForLongitude(longitude);
+      return palette[(offset + 12) % palette.length];
+    }
+
+    const pacificStates = new Set(["06", "32", "41", "53"]);
+    const mountainStates = new Set(["04", "08", "16", "30", "35", "49", "56"]);
+    const centralStates = new Set(["01", "05", "17", "19", "20", "22", "27", "28", "29", "31", "38", "40", "46", "47", "48", "55"]);
+    function stateColor(state) {
+      const id = String(state.id).padStart(2, "0");
+      if (id === "02") return zones[1].color;
+      if (id === "15") return zones[0].color;
+      if (pacificStates.has(id)) return zones[3].color;
+      if (mountainStates.has(id)) return zones[4].color;
+      if (centralStates.has(id)) return zones[5].color;
+      return zones[6].color;
+    }
+
+    Promise.all([
+      d3.json("./countries-110m.json"),
+      d3.json("./states-10m.json")
+    ]).then(([world, usa]) => {
+      countries = topojson.feature(world, world.objects.countries).features;
+      states = topojson.feature(usa, usa.objects.states).features;
+      countryGroup.selectAll("path").data(countries).join("path")
+        .attr("fill", d => colorForLongitude(d3.geoCentroid(d)[0]))
+        .attr("fill-opacity", .76)
+        .attr("stroke", "#f5fbff")
+        .attr("stroke-opacity", .72)
+        .attr("stroke-width", .65)
+        .on("mouseenter", function(event, d) {
+          hoveredId = d.id;
+          d3.select(this).attr("fill-opacity", .98).attr("stroke-width", 1.2);
+          const longitude = d3.geoCentroid(d)[0];
+          const offset = offsetForLongitude(longitude);
+          document.getElementById("countryName").textContent = d.properties?.name || "Country";
+          document.getElementById("zoneName").textContent = offset === -7 ? "PACIFIC" : offset === -6 ? "MOUNTAIN" : offset === -5 ? "CENTRAL" : offset === -4 ? "EASTERN" : "Time-zone region";
+          document.getElementById("zoneOffset").textContent = `UTC${offset >= 0 ? "+" : ""}${offset}`;
+        })
+        .on("mouseleave", function() {
+          hoveredId = null;
+          d3.select(this).attr("fill-opacity", .76).attr("stroke-width", .65);
+        });
+      stateGroup.selectAll("path").data(states).join("path")
+        .attr("fill", stateColor)
+        .attr("fill-opacity", .92)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-opacity", .8)
+        .attr("stroke-width", .55);
+      resize();
+    }).catch(() => {
+      document.querySelector(".map-status").textContent = "Map data unavailable";
+      resize();
+    });
+
+    const drag = d3.drag()
+      .on("start", () => { autoRotate = false; })
+      .on("drag", event => {
+        rotation[0] += event.dx * .28;
+        rotation[1] = Math.max(-75, Math.min(75, rotation[1] - event.dy * .28));
+        render();
+      });
+    svg.call(drag).on("wheel", event => {
+      event.preventDefault();
+      autoRotate = false;
+      scale = Math.max(170, Math.min(520, scale * (event.deltaY > 0 ? .9 : 1.1)));
+      render();
+    }, { passive: false });
+
+    document.getElementById("zoomIn").addEventListener("click", () => { autoRotate = false; scale = Math.min(520, scale * 1.15); render(); });
+    document.getElementById("zoomOut").addEventListener("click", () => { autoRotate = false; scale = Math.max(170, scale / 1.15); render(); });
+    document.getElementById("reset").addEventListener("click", () => { rotation = [28, -10, 0]; scale = Math.min(width * .31, height * .46); autoRotate = true; document.querySelectorAll(".zone-card").forEach(el => el.classList.remove("active")); render(); });
+
+    document.getElementById("searchForm").addEventListener("submit", event => {
+      event.preventDefault();
+      if (!countries) return;
+      const query = document.getElementById("countrySearch").value.trim().toLowerCase();
+      const country = countries.find(d => (d.properties?.name || "").toLowerCase().includes(query));
+      if (!country) return;
+      const [lon, lat] = d3.geoCentroid(country);
+      rotation = [-lon, -lat, 0];
+      autoRotate = false;
+      document.getElementById("countryName").textContent = country.properties?.name || "Country";
+      render();
+    });
+
+    d3.timer(elapsed => {
+      if (autoRotate && elapsed > 1200) {
+        rotation[0] += .025;
+        render();
+      }
+    });
+
+    window.addEventListener("resize", resize);
+    resize();
+  </script>
+</body>
+</html>
