@@ -102,7 +102,7 @@
 
     <section class="zone-wrap" aria-label="Time zone colors">
       <div class="zone-grid" id="zoneGrid"></div>
-      <p class="resize-copy">Permanent time-zone colors on the globe</p>
+      <p class="resize-copy">Permanent colors follow true time-zone boundaries</p>
     </section>
 
     <aside class="info">
@@ -117,8 +117,8 @@
 
   <main class="map-shell">
     <svg id="globe" role="img" aria-label="Rotatable globe permanently colored by time zone"></svg>
-    <div class="map-status">Permanent color layer</div>
-    <div class="hint">Drag to rotate · Scroll to zoom · Select a time-zone box to focus</div>
+    <div class="map-status">True time-zone borders</div>
+    <div class="hint">Drag to rotate · Scroll to zoom · Canada and other multi-zone countries are divided precisely</div>
     <div class="controls" aria-label="Map controls">
       <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
       <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
@@ -177,7 +177,7 @@
     let rotation = [28, -10, 0];
     let countries = null;
     let states = null;
-    let hoveredId = null;
+    let timeZoneFeatures = null;
     let autoRotate = true;
 
     const projection = d3.geoOrthographic().clipAngle(90).precision(.3);
@@ -193,7 +193,8 @@
     const globeGroup = svg.append("g");
     globeGroup.append("path").attr("class", "ocean").attr("fill", "#0b4265").attr("stroke", "#9ee8ff").attr("stroke-width", 1.4).attr("filter", "url(#glow)");
     globeGroup.append("path").attr("class", "grid").attr("fill", "none").attr("stroke", "#bfeaff").attr("stroke-opacity", .12).attr("stroke-width", .7);
-    const countryGroup = globeGroup.append("g").attr("class", "countries");
+    const zoneGroup = globeGroup.append("g").attr("class", "time-zone-regions");
+    const countryGroup = globeGroup.append("g").attr("class", "countries").attr("pointer-events", "none");
     const stateGroup = globeGroup.append("g").attr("class", "states").attr("pointer-events", "none");
 
     function resize() {
@@ -210,6 +211,7 @@
       projection.rotate(rotation).scale(scale);
       globeGroup.select(".ocean").attr("d", path(sphere));
       globeGroup.select(".grid").attr("d", path(graticule));
+      zoneGroup.selectAll("path").attr("d", path);
       countryGroup.selectAll("path").attr("d", path);
       stateGroup.selectAll("path").attr("d", path);
     }
@@ -224,59 +226,84 @@
       document.getElementById("countryName").textContent = "Selected time zone";
     }
 
-    function offsetForLongitude(longitude) {
-      return Math.max(-12, Math.min(14, Math.round(longitude / 15)));
+    function getOffsetMinutes(timeZone) {
+      try {
+        const instant = new Date();
+        const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23"
+        }).formatToParts(instant).map(part => [part.type, part.value]));
+        const wallAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
+        return Math.round((wallAsUtc - instant.getTime()) / 60000);
+      } catch {
+        return 0;
+      }
     }
 
-    function colorForLongitude(longitude) {
-      const offset = offsetForLongitude(longitude);
-      return palette[(offset + 12) % palette.length];
+    function formatOffset(minutes) {
+      const sign = minutes >= 0 ? "+" : "-";
+      const absolute = Math.abs(minutes);
+      return `UTC${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
     }
 
-    const pacificStates = new Set(["06", "32", "41", "53"]);
-    const mountainStates = new Set(["04", "08", "16", "30", "35", "49", "56"]);
-    const centralStates = new Set(["01", "05", "17", "19", "20", "22", "27", "28", "29", "31", "38", "40", "46", "47", "48", "55"]);
-    function stateColor(state) {
-      const id = String(state.id).padStart(2, "0");
-      if (id === "02") return zones[1].color;
-      if (id === "15") return zones[0].color;
-      if (pacificStates.has(id)) return zones[3].color;
-      if (mountainStates.has(id)) return zones[4].color;
-      if (centralStates.has(id)) return zones[5].color;
-      return zones[6].color;
+    const exactOffsetColors = new Map([
+      [-600, zones[0].color],
+      [-570, zones[2].color],
+      [-480, zones[1].color],
+      [-420, zones[3].color],
+      [-360, zones[4].color],
+      [-300, zones[5].color],
+      [-240, zones[6].color],
+      [-180, zones[7].color]
+    ]);
+
+    function colorForZone(timeZone) {
+      const offsetMinutes = getOffsetMinutes(timeZone);
+      if (exactOffsetColors.has(offsetMinutes)) return exactOffsetColors.get(offsetMinutes);
+      const paletteIndex = Math.round((offsetMinutes + 720) / 60);
+      return palette[Math.max(0, Math.min(palette.length - 1, paletteIndex))];
     }
 
     Promise.all([
       d3.json("./countries-110m.json"),
-      d3.json("./states-10m.json")
-    ]).then(([world, usa]) => {
+      d3.json("./states-10m.json"),
+      d3.json("./timezone-boundaries.geojson")
+    ]).then(([world, usa, timeZones]) => {
       countries = topojson.feature(world, world.objects.countries).features;
       states = topojson.feature(usa, usa.objects.states).features;
-      countryGroup.selectAll("path").data(countries).join("path")
-        .attr("fill", d => colorForLongitude(d3.geoCentroid(d)[0]))
-        .attr("fill-opacity", .76)
-        .attr("stroke", "#f5fbff")
-        .attr("stroke-opacity", .72)
-        .attr("stroke-width", .65)
+      timeZoneFeatures = timeZones.features;
+      zoneGroup.selectAll("path").data(timeZoneFeatures).join("path")
+        .attr("fill", d => colorForZone(d.properties?.tzid))
+        .attr("fill-opacity", .82)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-opacity", .7)
+        .attr("stroke-width", .72)
         .on("mouseenter", function(event, d) {
-          hoveredId = d.id;
-          d3.select(this).attr("fill-opacity", .98).attr("stroke-width", 1.2);
-          const longitude = d3.geoCentroid(d)[0];
-          const offset = offsetForLongitude(longitude);
-          document.getElementById("countryName").textContent = d.properties?.name || "Country";
-          document.getElementById("zoneName").textContent = offset === -7 ? "PACIFIC" : offset === -6 ? "MOUNTAIN" : offset === -5 ? "CENTRAL" : offset === -4 ? "EASTERN" : "Time-zone region";
-          document.getElementById("zoneOffset").textContent = `UTC${offset >= 0 ? "+" : ""}${offset}`;
+          const timeZone = d.properties?.tzid || "Time-zone region";
+          const offsetMinutes = getOffsetMinutes(timeZone);
+          d3.select(this).attr("fill-opacity", 1).attr("stroke-width", 1.35);
+          document.getElementById("countryName").textContent = "Time-zone boundary";
+          document.getElementById("zoneName").textContent = timeZone;
+          document.getElementById("zoneOffset").textContent = formatOffset(offsetMinutes);
         })
         .on("mouseleave", function() {
-          hoveredId = null;
-          d3.select(this).attr("fill-opacity", .76).attr("stroke-width", .65);
+          d3.select(this).attr("fill-opacity", .82).attr("stroke-width", .72);
         });
+      countryGroup.selectAll("path").data(countries).join("path")
+        .attr("fill", "none")
+        .attr("stroke", "#f5fbff")
+        .attr("stroke-opacity", .52)
+        .attr("stroke-width", .48);
       stateGroup.selectAll("path").data(states).join("path")
-        .attr("fill", stateColor)
-        .attr("fill-opacity", .92)
+        .attr("fill", "none")
         .attr("stroke", "#ffffff")
-        .attr("stroke-opacity", .8)
-        .attr("stroke-width", .55);
+        .attr("stroke-opacity", .5)
+        .attr("stroke-width", .38);
       resize();
     }).catch(() => {
       document.querySelector(".map-status").textContent = "Map data unavailable";
