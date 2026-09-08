@@ -269,6 +269,24 @@
       return palette[Math.max(0, Math.min(palette.length - 1, paletteIndex))];
     }
 
+    function rewindTimeZoneFeature(feature) {
+      const geometry = feature.geometry;
+      if (!geometry) return feature;
+      if (geometry.type === "Polygon") {
+        return { ...feature, geometry: { ...geometry, coordinates: geometry.coordinates.map(ring => [...ring].reverse()) } };
+      }
+      if (geometry.type === "MultiPolygon") {
+        return {
+          ...feature,
+          geometry: {
+            ...geometry,
+            coordinates: geometry.coordinates.map(polygon => polygon.map(ring => [...ring].reverse()))
+          }
+        };
+      }
+      return feature;
+    }
+
     Promise.all([
       d3.json("./countries-110m.json"),
       d3.json("./states-10m.json"),
@@ -276,7 +294,7 @@
     ]).then(([world, usa, timeZones]) => {
       countries = topojson.feature(world, world.objects.countries).features;
       states = topojson.feature(usa, usa.objects.states).features;
-      timeZoneFeatures = timeZones.features;
+      timeZoneFeatures = timeZones.features.map(rewindTimeZoneFeature);
       zoneGroup.selectAll("path").data(timeZoneFeatures).join("path")
         .attr("fill", d => colorForZone(d.properties?.tzid))
         .attr("fill-opacity", .82)
