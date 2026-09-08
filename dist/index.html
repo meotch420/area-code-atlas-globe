@@ -154,6 +154,7 @@
       card.type = "button";
       card.className = "zone-card";
       card.setAttribute("aria-pressed", "false");
+      card.dataset.offsetMinutes = String(Math.round(zone.offset * 60));
       card.style.background = `linear-gradient(135deg, ${zone.gradient[0]}, ${zone.gradient[1]})`;
       const hours = Math.trunc(Math.abs(zone.offset));
       const minutes = Math.round((Math.abs(zone.offset) - hours) * 60);
@@ -236,28 +237,33 @@
       document.getElementById("countryName").textContent = "Hover over globe";
       document.getElementById("zoneName").textContent = "---";
       document.getElementById("zoneOffset").textContent = "---";
+      document.querySelector(".map-status").textContent = "True time-zone borders";
       applyZoneHighlight();
     }
 
-    function focusOffset(offset, card) {
+    function selectOffset(offsetMinutes, card, zoneLabel) {
       autoRotate = false;
-      const nextOffsetMinutes = Math.round(offset * 60);
-      if (selectedOffsetMinutes === nextOffsetMinutes) {
+      if (selectedOffsetMinutes === offsetMinutes) {
         clearZoneFocus();
         return;
       }
-      selectedOffsetMinutes = nextOffsetMinutes;
+      selectedOffsetMinutes = offsetMinutes;
       document.querySelectorAll(".zone-card").forEach(el => {
-        const isActive = el === card;
+        const isActive = Number(el.dataset.offsetMinutes) === offsetMinutes;
         el.classList.toggle("active", isActive);
         el.setAttribute("aria-pressed", String(isActive));
       });
-      rotation = [-offset * 15, -8, 0];
+      rotation = [-(offsetMinutes / 60) * 15, -8, 0];
       applyZoneHighlight();
       render();
-      document.getElementById("zoneName").textContent = card.querySelector("strong").textContent;
-      document.getElementById("zoneOffset").textContent = `UTC${offset >= 0 ? "+" : ""}${offset}`;
+      document.getElementById("zoneName").textContent = zoneLabel;
+      document.getElementById("zoneOffset").textContent = formatOffset(offsetMinutes);
       document.getElementById("countryName").textContent = "Selected time zone";
+      document.querySelector(".map-status").textContent = `${zoneLabel} highlighted`;
+    }
+
+    function focusOffset(offset, card) {
+      selectOffset(Math.round(offset * 60), card, card.querySelector("strong").textContent);
     }
 
     function getOffsetMinutes(timeZone) {
@@ -335,6 +341,16 @@
         .attr("stroke", "#ffffff")
         .attr("stroke-opacity", .7)
         .attr("stroke-width", .72)
+        .style("cursor", "pointer")
+        .on("click", function(event, d) {
+          event.stopPropagation();
+          const timeZone = d.properties?.tzid || "Time-zone region";
+          const offsetMinutes = getOffsetMinutes(timeZone);
+          const matchingCard = [...document.querySelectorAll(".zone-card")]
+            .find(card => Number(card.dataset.offsetMinutes) === offsetMinutes);
+          const label = matchingCard?.querySelector("strong")?.textContent || timeZone;
+          selectOffset(offsetMinutes, matchingCard, label);
+        })
         .on("mouseenter", function(event, d) {
           const timeZone = d.properties?.tzid || "Time-zone region";
           const offsetMinutes = getOffsetMinutes(timeZone);
