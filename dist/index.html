@@ -48,7 +48,7 @@
       box-shadow: inset 0 0 0 1px #ffffff10;
       transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
     }
-    .zone-card:hover, .zone-card.active { transform: translateY(-2px); filter: brightness(1.12); box-shadow: 0 0 0 2px #fff, 0 0 20px #ffffff55; }
+    .zone-card:hover, .zone-card.active { transform: translateY(-2px); filter: brightness(1.12); box-shadow: 0 0 0 2px #fff, 0 0 20px #ffffff88; }
     .zone-card strong, .zone-card span { display: block; text-shadow: 0 1px 2px #0009; }
     .zone-card strong { font-size: .92rem; }
     .zone-card span { margin-top: 3px; font-size: .86rem; font-weight: 700; }
@@ -102,7 +102,7 @@
 
     <section class="zone-wrap" aria-label="Time zone colors">
       <div class="zone-grid" id="zoneGrid"></div>
-      <p class="resize-copy">Permanent colors follow true time-zone boundaries</p>
+      <p class="resize-copy">Click a box to light up that time zone · Click it again to show all</p>
     </section>
 
     <aside class="info">
@@ -151,7 +151,9 @@
     const timeFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     zones.forEach((zone) => {
       const card = document.createElement("button");
+      card.type = "button";
       card.className = "zone-card";
+      card.setAttribute("aria-pressed", "false");
       card.style.background = `linear-gradient(135deg, ${zone.gradient[0]}, ${zone.gradient[1]})`;
       const hours = Math.trunc(Math.abs(zone.offset));
       const minutes = Math.round((Math.abs(zone.offset) - hours) * 60);
@@ -179,6 +181,7 @@
     let states = null;
     let timeZoneFeatures = null;
     let autoRotate = true;
+    let selectedOffsetMinutes = null;
 
     const projection = d3.geoOrthographic().clipAngle(90).precision(.3);
     const path = d3.geoPath(projection);
@@ -216,10 +219,41 @@
       stateGroup.selectAll("path").attr("d", path);
     }
 
+    function applyZoneHighlight() {
+      zoneGroup.selectAll("path")
+        .attr("fill-opacity", d => selectedOffsetMinutes === null || getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? .96 : .16)
+        .attr("stroke-opacity", d => selectedOffsetMinutes === null || getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? .9 : .18)
+        .attr("stroke-width", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? 1.45 : .72)
+        .attr("filter", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? "url(#glow)" : null);
+    }
+
+    function clearZoneFocus() {
+      selectedOffsetMinutes = null;
+      document.querySelectorAll(".zone-card").forEach(el => {
+        el.classList.remove("active");
+        el.setAttribute("aria-pressed", "false");
+      });
+      document.getElementById("countryName").textContent = "Hover over globe";
+      document.getElementById("zoneName").textContent = "---";
+      document.getElementById("zoneOffset").textContent = "---";
+      applyZoneHighlight();
+    }
+
     function focusOffset(offset, card) {
       autoRotate = false;
-      document.querySelectorAll(".zone-card").forEach(el => el.classList.toggle("active", el === card));
+      const nextOffsetMinutes = Math.round(offset * 60);
+      if (selectedOffsetMinutes === nextOffsetMinutes) {
+        clearZoneFocus();
+        return;
+      }
+      selectedOffsetMinutes = nextOffsetMinutes;
+      document.querySelectorAll(".zone-card").forEach(el => {
+        const isActive = el === card;
+        el.classList.toggle("active", isActive);
+        el.setAttribute("aria-pressed", String(isActive));
+      });
       rotation = [-offset * 15, -8, 0];
+      applyZoneHighlight();
       render();
       document.getElementById("zoneName").textContent = card.querySelector("strong").textContent;
       document.getElementById("zoneOffset").textContent = `UTC${offset >= 0 ? "+" : ""}${offset}`;
@@ -304,13 +338,13 @@
         .on("mouseenter", function(event, d) {
           const timeZone = d.properties?.tzid || "Time-zone region";
           const offsetMinutes = getOffsetMinutes(timeZone);
-          d3.select(this).attr("fill-opacity", 1).attr("stroke-width", 1.35);
+          d3.select(this).attr("fill-opacity", 1).attr("stroke-opacity", 1).attr("stroke-width", 1.7);
           document.getElementById("countryName").textContent = "Time-zone boundary";
           document.getElementById("zoneName").textContent = timeZone;
           document.getElementById("zoneOffset").textContent = formatOffset(offsetMinutes);
         })
         .on("mouseleave", function() {
-          d3.select(this).attr("fill-opacity", .82).attr("stroke-width", .72);
+          applyZoneHighlight();
         });
       countryGroup.selectAll("path").data(countries).join("path")
         .attr("fill", "none")
@@ -322,6 +356,7 @@
         .attr("stroke", "#ffffff")
         .attr("stroke-opacity", .5)
         .attr("stroke-width", .38);
+      applyZoneHighlight();
       resize();
     }).catch(() => {
       document.querySelector(".map-status").textContent = "Map data unavailable";
@@ -344,7 +379,7 @@
 
     document.getElementById("zoomIn").addEventListener("click", () => { autoRotate = false; scale = Math.min(520, scale * 1.15); render(); });
     document.getElementById("zoomOut").addEventListener("click", () => { autoRotate = false; scale = Math.max(170, scale / 1.15); render(); });
-    document.getElementById("reset").addEventListener("click", () => { rotation = [28, -10, 0]; scale = Math.min(width * .31, height * .46); autoRotate = true; document.querySelectorAll(".zone-card").forEach(el => el.classList.remove("active")); render(); });
+    document.getElementById("reset").addEventListener("click", () => { rotation = [28, -10, 0]; scale = Math.min(width * .31, height * .46); autoRotate = true; clearZoneFocus(); render(); });
 
     document.getElementById("searchForm").addEventListener("submit", event => {
       event.preventDefault();
