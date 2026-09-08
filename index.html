@@ -14,7 +14,6 @@
       --line: #284c78;
       --ocean: #0a3655;
       --page: #020617;
-      --zone-card-height: 72px;
     }
 
     * { box-sizing: border-box; }
@@ -37,9 +36,11 @@
     .search button { height: 40px; padding: 0 14px; border: 0; border-radius: 6px; background: #2563eb; color: white; font-weight: 800; cursor: pointer; }
 
     .zone-wrap { min-width: 0; overflow: hidden; }
+    .zone-grid-viewport { height: 72px; overflow: hidden; }
     .zone-grid { display: grid; grid-template-columns: repeat(8, minmax(104px, 1fr)); gap: 6px; }
     .zone-card {
-      min-height: var(--zone-card-height);
+      height: 72px;
+      min-height: 72px;
       padding: 7px 6px;
       border: 1px solid #ffffff38;
       border-radius: 6px;
@@ -128,8 +129,8 @@
     </section>
 
     <section class="zone-wrap" aria-label="Time zone colors">
-      <div class="zone-grid" id="zoneGrid"></div>
-      <button class="zone-resizer" id="zoneResizer" type="button" aria-label="Drag to resize time zone boxes">Drag to resize time zones ↕</button>
+      <div class="zone-grid-viewport" id="zoneGridViewport"><div class="zone-grid" id="zoneGrid"></div></div>
+      <button class="zone-resizer" id="zoneResizer" type="button" aria-label="Drag to show more or fewer complete rows of time zones">Drag to show all time zones ↕</button>
     </section>
 
     <aside class="info">
@@ -156,7 +157,7 @@
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
   <script>
-    const zones = [
+    const primaryZones = [
       { name: "HAWAII", offset: -10, color: "#b6c4d7", gradient: ["#e2e8f0", "#94a3b8"] },
       { name: "ALASKA", offset: -8, color: "#d946ef", gradient: ["#f0abfc", "#c026d3"] },
       { name: "MARQUESAS", offset: -9.5, color: "#6d28d9", gradient: ["#7c3aed", "#4c1d95"] },
@@ -167,12 +168,27 @@
       { name: "ATLANTIC", offset: -3, color: "#d65b15", gradient: ["#f97316", "#9a3412"] }
     ];
 
-    const palette = [
-      "#64748b", "#d946ef", "#7c3aed", "#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#f97316",
-      "#ea580c", "#d97706", "#ca8a04", "#65a30d", "#16a34a", "#059669", "#0d9488", "#2563eb",
-      "#0284c7", "#14b8a6", "#4338ca", "#6d28d9", "#be185d", "#dc2626", "#b45309", "#4d7c0f",
-      "#047857", "#0369a1", "#475569"
+    const additionalZoneDefinitions = [
+      ["DATE LINE WEST", -12], ["SAMOA", -11], ["GAMBIER", -9], ["NEWFOUNDLAND", -3.5],
+      ["NEWFOUNDLAND DST", -2.5], ["MID-ATLANTIC", -2], ["AZORES", -1], ["GREENWICH", 0],
+      ["CENTRAL EUROPE", 1], ["EASTERN EUROPE", 2], ["EAST AFRICA", 3], ["IRAN", 3.5],
+      ["GULF", 4], ["AFGHANISTAN", 4.5], ["PAKISTAN", 5], ["INDIA", 5.5], ["NEPAL", 5.75],
+      ["BANGLADESH", 6], ["MYANMAR", 6.5], ["INDOCHINA", 7], ["CHINA", 8], ["EUCLA", 8.75],
+      ["JAPAN", 9], ["CENTRAL AUS.", 9.5], ["EASTERN AUS.", 10], ["LORD HOWE", 10.5],
+      ["SOLOMON IS.", 11], ["NEW ZEALAND", 12], ["CHATHAM", 12.75], ["TONGA", 13],
+      ["CHATHAM SUMMER", 13.75], ["LINE ISLANDS", 14]
     ];
+
+    const additionalZones = additionalZoneDefinitions.map(([name, offset], index) => {
+      const hue = Math.round((index * 137.508 + 22) % 360);
+      return {
+        name,
+        offset,
+        color: `hsl(${hue} 72% 47%)`,
+        gradient: [`hsl(${hue} 82% 61%)`, `hsl(${hue} 75% 35%)`]
+      };
+    });
+    const zones = [...primaryZones, ...additionalZones];
 
     const zoneGrid = document.getElementById("zoneGrid");
     const timeFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -201,19 +217,38 @@
     setInterval(updateClocks, 1000);
 
     const zoneResizer = document.getElementById("zoneResizer");
+    const zoneGridViewport = document.getElementById("zoneGridViewport");
+    const zoneCardHeight = 72;
+    const zoneRowGap = 6;
+    let visibleZoneRows = 1;
     let resizeStartY = 0;
-    let resizeStartHeight = 72;
+    let resizeStartRows = 1;
     let resizeMoved = false;
 
-    function setZoneCardHeight(height) {
-      const nextHeight = Math.max(64, Math.min(140, Math.round(height)));
-      document.documentElement.style.setProperty("--zone-card-height", `${nextHeight}px`);
-      zoneResizer.setAttribute("aria-valuenow", String(nextHeight));
+    function getZoneColumnCount() {
+      return getComputedStyle(zoneGrid).gridTemplateColumns.split(" ").filter(Boolean).length || 1;
+    }
+
+    function getTotalZoneRows() {
+      return Math.ceil(zones.length / getZoneColumnCount());
+    }
+
+    function setVisibleZoneRows(rows) {
+      const totalRows = getTotalZoneRows();
+      visibleZoneRows = Math.max(1, Math.min(totalRows, Math.round(rows)));
+      const viewportHeight = visibleZoneRows * zoneCardHeight + (visibleZoneRows - 1) * zoneRowGap;
+      zoneGridViewport.style.height = `${viewportHeight}px`;
+      zoneResizer.setAttribute("aria-valuemin", "1");
+      zoneResizer.setAttribute("aria-valuemax", String(totalRows));
+      zoneResizer.setAttribute("aria-valuenow", String(visibleZoneRows));
+      zoneResizer.textContent = visibleZoneRows === totalRows
+        ? "All time zones shown · Drag up to close ↕"
+        : `Showing ${visibleZoneRows} of ${totalRows} rows · Drag to show all ↕`;
     }
 
     zoneResizer.addEventListener("pointerdown", event => {
       resizeStartY = event.clientY;
-      resizeStartHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
+      resizeStartRows = visibleZoneRows;
       resizeMoved = false;
       zoneResizer.setPointerCapture(event.pointerId);
     });
@@ -221,19 +256,19 @@
       if (!zoneResizer.hasPointerCapture(event.pointerId)) return;
       const distance = event.clientY - resizeStartY;
       if (Math.abs(distance) > 3) resizeMoved = true;
-      setZoneCardHeight(resizeStartHeight + distance);
+      const rowChange = Math.round(distance / (zoneCardHeight + zoneRowGap));
+      setVisibleZoneRows(resizeStartRows + rowChange);
     });
     zoneResizer.addEventListener("click", () => {
       if (resizeMoved) return;
-      const currentHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
-      setZoneCardHeight(currentHeight < 96 ? 118 : 72);
+      setVisibleZoneRows(visibleZoneRows === getTotalZoneRows() ? 1 : getTotalZoneRows());
     });
     zoneResizer.addEventListener("keydown", event => {
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       event.preventDefault();
-      const currentHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
-      setZoneCardHeight(currentHeight + (event.key === "ArrowDown" ? 8 : -8));
+      setVisibleZoneRows(visibleZoneRows + (event.key === "ArrowDown" ? 1 : -1));
     });
+    setVisibleZoneRows(1);
 
     const svg = d3.select("#globe");
     let width = 1200;
@@ -315,6 +350,11 @@
         el.classList.toggle("active", isActive);
         el.setAttribute("aria-pressed", String(isActive));
       });
+      if (card) {
+        const cardIndex = [...zoneGrid.children].indexOf(card);
+        const cardRow = Math.floor(cardIndex / getZoneColumnCount()) + 1;
+        if (cardRow > visibleZoneRows) setVisibleZoneRows(cardRow);
+      }
       rotation = [-(offsetMinutes / 60) * 15, -8, 0];
       applyZoneHighlight();
       render();
@@ -353,22 +393,13 @@
       return `UTC${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
     }
 
-    const exactOffsetColors = new Map([
-      [-600, zones[0].color],
-      [-570, zones[2].color],
-      [-480, zones[1].color],
-      [-420, zones[3].color],
-      [-360, zones[4].color],
-      [-300, zones[5].color],
-      [-240, zones[6].color],
-      [-180, zones[7].color]
-    ]);
+    const exactOffsetColors = new Map(zones.map(zone => [Math.round(zone.offset * 60), zone.color]));
 
     function colorForZone(timeZone) {
       const offsetMinutes = getOffsetMinutes(timeZone);
       if (exactOffsetColors.has(offsetMinutes)) return exactOffsetColors.get(offsetMinutes);
-      const paletteIndex = Math.round((offsetMinutes + 720) / 60);
-      return palette[Math.max(0, Math.min(palette.length - 1, paletteIndex))];
+      const hue = Math.round((((offsetMinutes + 720) / 15) * 137.508 + 22) % 360);
+      return `hsl(${hue} 72% 47%)`;
     }
 
     function rewindTimeZoneFeature(feature) {
@@ -479,7 +510,10 @@
       }
     });
 
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", () => {
+      setVisibleZoneRows(visibleZoneRows);
+      resize();
+    });
     resize();
   </script>
 </body>
