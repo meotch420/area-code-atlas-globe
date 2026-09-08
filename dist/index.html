@@ -14,6 +14,7 @@
       --line: #284c78;
       --ocean: #0a3655;
       --page: #020617;
+      --zone-card-height: 72px;
     }
 
     * { box-sizing: border-box; }
@@ -38,7 +39,7 @@
     .zone-wrap { min-width: 0; overflow: hidden; }
     .zone-grid { display: grid; grid-template-columns: repeat(8, minmax(104px, 1fr)); gap: 6px; }
     .zone-card {
-      min-height: 72px;
+      min-height: var(--zone-card-height);
       padding: 7px 6px;
       border: 1px solid #ffffff38;
       border-radius: 6px;
@@ -52,7 +53,33 @@
     .zone-card strong, .zone-card span { display: block; text-shadow: 0 1px 2px #0009; }
     .zone-card strong { font-size: .92rem; }
     .zone-card span { margin-top: 3px; font-size: .86rem; font-weight: 700; }
-    .resize-copy { margin: -1px 0 0; border-top: 1px solid #64748b; color: #cbd5e1; text-align: center; font-size: .66rem; font-weight: 800; }
+    .zone-resizer {
+      position: relative;
+      display: block;
+      width: 100%;
+      height: 20px;
+      margin: -1px 0 0;
+      padding: 0 28px 0 8px;
+      border: 0;
+      border-top: 1px solid #64748b;
+      background: #07101f;
+      color: #cbd5e1;
+      text-align: center;
+      font-size: .7rem;
+      font-weight: 800;
+      cursor: ns-resize;
+      touch-action: none;
+    }
+    .zone-resizer:hover, .zone-resizer:focus-visible { background: #10213b; color: #fff; outline: 2px solid #60a5fa; outline-offset: -2px; }
+    .zone-resizer::after {
+      content: "";
+      position: absolute;
+      right: 5px;
+      top: 3px;
+      width: 16px;
+      height: 12px;
+      background: repeating-linear-gradient(135deg, transparent 0 3px, #94a3b8 3px 4px);
+    }
 
     .info { min-height: 210px; padding: 8px 10px; border: 1px solid #2f5f95; border-radius: 8px; background: var(--panel); box-shadow: 0 0 22px #3b82f633; }
     .tabs { display: grid; grid-template-columns: 1fr 1fr; margin: -2px -4px 7px; border-bottom: 1px solid #2f5f95; }
@@ -102,7 +129,7 @@
 
     <section class="zone-wrap" aria-label="Time zone colors">
       <div class="zone-grid" id="zoneGrid"></div>
-      <p class="resize-copy">Click a box to light up that time zone · Click it again to show all</p>
+      <button class="zone-resizer" id="zoneResizer" type="button" aria-label="Drag to resize time zone boxes">Drag to resize time zones ↕</button>
     </section>
 
     <aside class="info">
@@ -172,6 +199,41 @@
     }
     updateClocks();
     setInterval(updateClocks, 1000);
+
+    const zoneResizer = document.getElementById("zoneResizer");
+    let resizeStartY = 0;
+    let resizeStartHeight = 72;
+    let resizeMoved = false;
+
+    function setZoneCardHeight(height) {
+      const nextHeight = Math.max(64, Math.min(140, Math.round(height)));
+      document.documentElement.style.setProperty("--zone-card-height", `${nextHeight}px`);
+      zoneResizer.setAttribute("aria-valuenow", String(nextHeight));
+    }
+
+    zoneResizer.addEventListener("pointerdown", event => {
+      resizeStartY = event.clientY;
+      resizeStartHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
+      resizeMoved = false;
+      zoneResizer.setPointerCapture(event.pointerId);
+    });
+    zoneResizer.addEventListener("pointermove", event => {
+      if (!zoneResizer.hasPointerCapture(event.pointerId)) return;
+      const distance = event.clientY - resizeStartY;
+      if (Math.abs(distance) > 3) resizeMoved = true;
+      setZoneCardHeight(resizeStartHeight + distance);
+    });
+    zoneResizer.addEventListener("click", () => {
+      if (resizeMoved) return;
+      const currentHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
+      setZoneCardHeight(currentHeight < 96 ? 118 : 72);
+    });
+    zoneResizer.addEventListener("keydown", event => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const currentHeight = document.querySelector(".zone-card").getBoundingClientRect().height;
+      setZoneCardHeight(currentHeight + (event.key === "ArrowDown" ? 8 : -8));
+    });
 
     const svg = d3.select("#globe");
     let width = 1200;
