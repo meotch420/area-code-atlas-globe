@@ -319,9 +319,15 @@
 
     function applyZoneHighlight() {
       zoneGroup.selectAll("path")
-        .attr("fill-opacity", d => selectedOffsetMinutes === null || getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? .96 : .16)
-        .attr("stroke-opacity", d => selectedOffsetMinutes === null || getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? .9 : .18)
-        .attr("stroke-width", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? 1.45 : .72)
+        .attr("fill", d => {
+          const baseColor = colorForZone(d.properties?.tzid);
+          const isSelected = selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes;
+          return isSelected ? d3.color(baseColor).brighter(.75).formatHex() : baseColor;
+        })
+        .attr("fill-opacity", d => selectedOffsetMinutes === null ? .86 : getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? 1 : .12)
+        .attr("stroke", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? "#fff7ad" : "#ffffff")
+        .attr("stroke-opacity", d => selectedOffsetMinutes === null || getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? 1 : .12)
+        .attr("stroke-width", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? 2.2 : .72)
         .attr("filter", d => selectedOffsetMinutes !== null && getOffsetMinutes(d.properties?.tzid) === selectedOffsetMinutes ? "url(#glow)" : null);
     }
 
@@ -368,7 +374,10 @@
       selectOffset(Math.round(offset * 60), card, card.querySelector("strong").textContent);
     }
 
+    const offsetMinuteCache = new Map();
+
     function getOffsetMinutes(timeZone) {
+      if (offsetMinuteCache.has(timeZone)) return offsetMinuteCache.get(timeZone);
       try {
         const instant = new Date();
         const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
@@ -378,10 +387,13 @@
           day: "2-digit",
           hour: "2-digit",
           minute: "2-digit",
+          second: "2-digit",
           hourCycle: "h23"
         }).formatToParts(instant).map(part => [part.type, part.value]));
-        const wallAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
-        return Math.round((wallAsUtc - instant.getTime()) / 60000);
+        const wallAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+        const offsetMinutes = Math.round((wallAsUtc - instant.getTime()) / 60000);
+        offsetMinuteCache.set(timeZone, offsetMinutes);
+        return offsetMinutes;
       } catch {
         return 0;
       }
